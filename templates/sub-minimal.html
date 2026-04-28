@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subscription - {{.sId}}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 100%;
+            padding: 40px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        .sub-id {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 30px;
+            word-break: break-all;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .info-item {
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 6px;
+        }
+        .info-label {
+            font-size: 12px;
+            color: #999;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+        .info-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+        }
+        .section-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+        .proxy-list {
+            background: #f9f9f9;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .proxy-item {
+            padding: 10px;
+            margin-bottom: 8px;
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: #333;
+            word-break: break-all;
+            line-height: 1.4;
+        }
+        .proxy-item:last-child {
+            margin-bottom: 0;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 30px;
+        }
+        button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+        .btn-secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+        .btn-secondary:hover {
+            background: #d0d0d0;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+            text-align: center;
+            font-size: 12px;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📋 Your Subscription</h1>
+        <div class="sub-id">ID: {{.sId}}</div>
+
+        <div class="info-grid">
+            <div class="info-item">
+                <div class="info-label">Downloaded</div>
+                <div class="info-value">{{.download}}</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Uploaded</div>
+                <div class="info-value">{{.upload}}</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Total Quota</div>
+                <div class="info-value">{{.total}}</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Used</div>
+                <div class="info-value">{{.used}}</div>
+            </div>
+            {{if gt .totalByte 0}}
+            <div class="info-item">
+                <div class="info-label">Remaining</div>
+                <div class="info-value">{{.remained}}</div>
+            </div>
+            {{end}}
+            <div class="info-item">
+                <div class="info-label">Expires</div>
+                <div class="info-value">{{if eq .expire 0}}Never{{else}}{{.expire}}{{end}}</div>
+            </div>
+        </div>
+
+        <div class="section-title">📡 Proxy Links</div>
+        <div class="proxy-list">
+            {{range .result}}
+            <div class="proxy-item">{{.}}</div>
+            {{end}}
+        </div>
+
+        <div class="button-group">
+            <button class="btn-primary" onclick="copyAll()">Copy All Links</button>
+            <button class="btn-secondary" onclick="downloadLinks()">Download</button>
+        </div>
+
+        <div class="footer">
+            <p>This subscription is valid for personal use only.</p>
+        </div>
+    </div>
+
+    <script>
+        function copyAll() {
+            const links = Array.from(document.querySelectorAll('.proxy-item')).map(el => el.textContent).join('\n');
+            navigator.clipboard.writeText(links).then(() => {
+                alert('All links copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+            });
+        }
+
+        function downloadLinks() {
+            const links = Array.from(document.querySelectorAll('.proxy-item')).map(el => el.textContent).join('\n');
+            const element = document.createElement('a');
+            element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(links));
+            element.setAttribute('download', 'subscription.txt');
+            element.style.display = 'none';
+            document.body.appendChild(element);
+            element.click();
+            document.body.removeChild(element);
+        }
+    </script>
+</body>
+</html>

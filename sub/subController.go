@@ -3,10 +3,13 @@ package sub
 import (
 	"encoding/base64"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
+	"text/template"
 
 	"github.com/mhsanaei/3x-ui/v2/config"
+	"github.com/mhsanaei/3x-ui/v2/logger"
 
 	"github.com/gin-gonic/gin"
 )
@@ -21,12 +24,15 @@ type SUBController struct {
 	subRoutingRules  string
 	subPath          string
 	subJsonPath      string
+	subClashPath     string
 	jsonEnabled      bool
+	clashEnabled     bool
 	subEncrypt       bool
 	updateInterval   string
 
-	subService     *SubService
-	subJsonService *SubJsonService
+	subService      *SubService
+	subJsonService  *SubJsonService
+	subClashService *SubClashService
 }
 
 // NewSUBController creates a new subscription controller with the given configuration.
@@ -34,7 +40,9 @@ func NewSUBController(
 	g *gin.RouterGroup,
 	subPath string,
 	jsonPath string,
+	clashPath string,
 	jsonEnabled bool,
+	clashEnabled bool,
 	encrypt bool,
 	showInfo bool,
 	rModel string,
@@ -60,12 +68,15 @@ func NewSUBController(
 		subRoutingRules:  subRoutingRules,
 		subPath:          subPath,
 		subJsonPath:      jsonPath,
+		subClashPath:     clashPath,
 		jsonEnabled:      jsonEnabled,
+		clashEnabled:     clashEnabled,
 		subEncrypt:       encrypt,
 		updateInterval:   update,
 
-		subService:     sub,
-		subJsonService: NewSubJsonService(jsonFragment, jsonNoise, jsonMux, jsonRules, sub),
+		subService:      sub,
+		subJsonService:  NewSubJsonService(jsonFragment, jsonNoise, jsonMux, jsonRules, sub),
+		subClashService: NewSubClashService(sub),
 	}
 	a.initRouter(g)
 	return a
@@ -80,6 +91,36 @@ func (a *SUBController) initRouter(g *gin.RouterGroup) {
 		gJson := g.Group(a.subJsonPath)
 		gJson.GET(":subid", a.subJsons)
 	}
+	if a.clashEnabled {
+		gClash := g.Group(a.subClashPath)
+		gClash.GET(":subid", a.subClashs)
+	}
+}
+
+// loadCustomSubscriptionTemplate tries to load custom subscription template from filesystem.
+// Returns nil if not found or on error (triggers safe fallback to built-in).
+func loadCustomSubscriptionTemplate() *template.Template {
+	templateFile := "/etc/x-ui/templates/sub.html"
+
+	// Try to read file
+	content, err := os.ReadFile(templateFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			logger.Debugf("Custom template not found: %s (using built-in)", templateFile)
+		} else {
+			logger.Warningf("Failed to read custom template: %v", err)
+		}
+		return nil
+	}
+
+	// Try to parse as Go template
+	tmpl, err := template.New("custom_sub").Parse(string(content))
+	if err != nil {
+		logger.Warningf("Failed to parse custom template: %v", err)
+		return nil
+	}
+
+	return tmpl
 }
 
 // subs handles HTTP requests for subscription links, returning either HTML page or base64-encoded subscription data.
@@ -99,9 +140,12 @@ func (a *SUBController) subs(c *gin.Context) {
 		accept := c.GetHeader("Accept")
 		if strings.Contains(strings.ToLower(accept), "text/html") || c.Query("html") == "1" || strings.EqualFold(c.Query("view"), "html") {
 			// Build page data in service
-			subURL, subJsonURL := a.subService.BuildURLs(scheme, hostWithPort, a.subPath, a.subJsonPath, subId)
+			subURL, subJsonURL, subClashURL := a.subService.BuildURLs(scheme, hostWithPort, a.subPath, a.subJsonPath, a.subClashPath, subId)
 			if !a.jsonEnabled {
 				subJsonURL = ""
+			}
+			if !a.clashEnabled {
+				subClashURL = ""
 			}
 			// Get base_path from context (set by middleware)
 			basePath, exists := c.Get("base_path")
@@ -116,8 +160,10 @@ func (a *SUBController) subs(c *gin.Context) {
 				// Remove trailing slash if exists, add subId, then add trailing slash
 				basePathStr = strings.TrimRight(basePathStr, "/") + "/" + subId + "/"
 			}
-			page := a.subService.BuildPageData(subId, hostHeader, traffic, lastOnline, subs, subURL, subJsonURL, basePathStr)
-			c.HTML(200, "subpage.html", gin.H{
+			page := a.subService.BuildPageData(subId, hostHeader, traffic, lastOnline, subs, subURL, subJsonURL, subClashURL, basePathStr)
+
+			// Build data dictionary for template
+			templateData := gin.H{
 				"title":        "subscription.title",
 				"cur_ver":      config.GetVersion(),
 				"host":         page.Host,
@@ -136,8 +182,22 @@ func (a *SUBController) subs(c *gin.Context) {
 				"totalByte":    page.TotalByte,
 				"subUrl":       page.SubUrl,
 				"subJsonUrl":   page.SubJsonUrl,
+				"subClashUrl":  page.SubClashUrl,
 				"result":       page.Result,
-			})
+			}
+
+			// Try custom template first
+			if customTmpl := loadCustomSubscriptionTemplate(); customTmpl != nil {
+				err := customTmpl.Execute(c.Writer, templateData)
+				if err != nil {
+					logger.Warningf("Failed to execute custom template: %v, falling back to built-in", err)
+					c.HTML(200, "subpage.html", templateData)
+				}
+				return
+			}
+
+			// Fallback to built-in template
+			c.HTML(200, "subpage.html", templateData)
 			return
 		}
 
@@ -165,7 +225,6 @@ func (a *SUBController) subJsons(c *gin.Context) {
 	if err != nil || len(jsonSub) == 0 {
 		c.String(400, "Error!")
 	} else {
-		// Add headers
 		profileUrl := a.subProfileUrl
 		if profileUrl == "" {
 			profileUrl = fmt.Sprintf("%s://%s%s", scheme, hostWithPort, c.Request.RequestURI)
@@ -173,6 +232,22 @@ func (a *SUBController) subJsons(c *gin.Context) {
 		a.ApplyCommonHeaders(c, header, a.updateInterval, a.subTitle, a.subSupportUrl, profileUrl, a.subAnnounce, a.subEnableRouting, a.subRoutingRules)
 
 		c.String(200, jsonSub)
+	}
+}
+
+func (a *SUBController) subClashs(c *gin.Context) {
+	subId := c.Param("subid")
+	scheme, host, hostWithPort, _ := a.subService.ResolveRequest(c)
+	clashSub, header, err := a.subClashService.GetClash(subId, host)
+	if err != nil || len(clashSub) == 0 {
+		c.String(400, "Error!")
+	} else {
+		profileUrl := a.subProfileUrl
+		if profileUrl == "" {
+			profileUrl = fmt.Sprintf("%s://%s%s", scheme, hostWithPort, c.Request.RequestURI)
+		}
+		a.ApplyCommonHeaders(c, header, a.updateInterval, a.subTitle, a.subSupportUrl, profileUrl, a.subAnnounce, a.subEnableRouting, a.subRoutingRules)
+		c.Data(200, "application/yaml; charset=utf-8", []byte(clashSub))
 	}
 }
 
