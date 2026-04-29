@@ -3,13 +3,10 @@ package sub
 import (
 	"encoding/base64"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
-	"text/template"
 
 	"github.com/mhsanaei/3x-ui/v2/config"
-	"github.com/mhsanaei/3x-ui/v2/logger"
 
 	"github.com/gin-gonic/gin"
 )
@@ -97,32 +94,6 @@ func (a *SUBController) initRouter(g *gin.RouterGroup) {
 	}
 }
 
-// loadCustomSubscriptionTemplate tries to load custom subscription template from filesystem.
-// Returns nil if not found or on error (triggers safe fallback to built-in).
-func loadCustomSubscriptionTemplate() *template.Template {
-	templateFile := "/etc/x-ui/templates/sub.html"
-
-	// Try to read file
-	content, err := os.ReadFile(templateFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			logger.Debugf("Custom template not found: %s (using built-in)", templateFile)
-		} else {
-			logger.Warningf("Failed to read custom template: %v", err)
-		}
-		return nil
-	}
-
-	// Try to parse as Go template
-	tmpl, err := template.New("custom_sub").Parse(string(content))
-	if err != nil {
-		logger.Warningf("Failed to parse custom template: %v", err)
-		return nil
-	}
-
-	return tmpl
-}
-
 // subs handles HTTP requests for subscription links, returning either HTML page or base64-encoded subscription data.
 func (a *SUBController) subs(c *gin.Context) {
 	subId := c.Param("subid")
@@ -161,9 +132,7 @@ func (a *SUBController) subs(c *gin.Context) {
 				basePathStr = strings.TrimRight(basePathStr, "/") + "/" + subId + "/"
 			}
 			page := a.subService.BuildPageData(subId, hostHeader, traffic, lastOnline, subs, subURL, subJsonURL, subClashURL, basePathStr)
-
-			// Build data dictionary for template
-			templateData := gin.H{
+			c.HTML(200, "subpage.html", gin.H{
 				"title":        "subscription.title",
 				"cur_ver":      config.GetVersion(),
 				"host":         page.Host,
@@ -184,20 +153,7 @@ func (a *SUBController) subs(c *gin.Context) {
 				"subJsonUrl":   page.SubJsonUrl,
 				"subClashUrl":  page.SubClashUrl,
 				"result":       page.Result,
-			}
-
-			// Try custom template first
-			if customTmpl := loadCustomSubscriptionTemplate(); customTmpl != nil {
-				err := customTmpl.Execute(c.Writer, templateData)
-				if err != nil {
-					logger.Warningf("Failed to execute custom template: %v, falling back to built-in", err)
-					c.HTML(200, "subpage.html", templateData)
-				}
-				return
-			}
-
-			// Fallback to built-in template
-			c.HTML(200, "subpage.html", templateData)
+			})
 			return
 		}
 

@@ -4,20 +4,20 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - '**'
+      - "**"
     tags:
       - "v*.*.*"
     paths:
-      - '**.js'
-      - '**.css'
-      - '**.html'
-      - '**.sh'
-      - '**.go'
-      - 'go.mod'
-      - 'go.sum'
-      - 'x-ui.service.debian'
-      - 'x-ui.service.arch'
-      - 'x-ui.service.rhel'
+      - "**.js"
+      - "**.css"
+      - "**.html"
+      - "**.sh"
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+      - "x-ui.service.debian"
+      - "x-ui.service.arch"
+      - "x-ui.service.rhel"
   pull_request:
 
 jobs:
@@ -114,7 +114,7 @@ jobs:
           go build -ldflags "-w -s -linkmode external -extldflags '-static'" -o xui-release -v main.go
           file xui-release
           ldd xui-release || echo "Static binary confirmed"
-          
+
           mkdir x-ui
           cp xui-release x-ui/
           cp x-ui.service.debian x-ui/
@@ -124,9 +124,9 @@ jobs:
           mv x-ui/xui-release x-ui/x-ui
           mkdir x-ui/bin
           cd x-ui/bin
-          
+
           # Download dependencies
-          Xray_URL="https://github.com/XTLS/Xray-core/releases/download/v26.2.6/"
+          Xray_URL="https://github.com/XTLS/Xray-core/releases/download/v26.4.25/"
           if [ "${{ matrix.platform }}" == "amd64" ]; then
             wget -q ${Xray_URL}Xray-linux-64.zip
             unzip Xray-linux-64.zip
@@ -165,7 +165,7 @@ jobs:
           wget -q -O geosite_RU.dat https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geosite.dat
           mv xray xray-linux-${{ matrix.platform }}
           cd ../..
-          
+
       - name: Package
         run: tar -zcvf x-ui-linux-${{ matrix.platform }}.tar.gz x-ui
 
@@ -242,9 +242,9 @@ jobs:
           Copy-Item xui-release.exe x-ui\x-ui.exe
           mkdir x-ui\bin
           cd x-ui\bin
-          
+
           # Download Xray for Windows
-          $Xray_URL = "https://github.com/XTLS/Xray-core/releases/download/v26.2.6/"
+          $Xray_URL = "https://github.com/XTLS/Xray-core/releases/download/v26.4.25/"
           Invoke-WebRequest -Uri "${Xray_URL}Xray-windows-64.zip" -OutFile "Xray-windows-64.zip"
           Expand-Archive -Path "Xray-windows-64.zip" -DestinationPath .
           Remove-Item "Xray-windows-64.zip"
